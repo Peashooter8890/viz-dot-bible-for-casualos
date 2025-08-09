@@ -9,7 +9,6 @@ import './ancestry-styles.css';
 const { distance, point } = window.turf;
 const mapboxgl = window.mapboxgl;
 
-
 // Constants
 const MAPBOX_TOKEN = "pk.eyJ1IjoiYmlibGV2aXoiLCJhIjoiY2pjOTVhazJ1MDlqbzMzczFoamd3MzFnOSJ9.7k1RJ5oh-LNaYuADxsgx4Q";
 const LABEL_LAYER_IDS = ["labels-top-level", "labels-mid-level", "labels-bottom-level"];
@@ -249,6 +248,7 @@ const dynamicOriginalLabelOpacities = new Map();
 let globalConstantsInitialized = false;
 
 // PersonInfoPopup Component
+// PersonInfoPopup Component
 const PersonInfoPopup = ({ featureInfo, onClose, mapInstance }) => {
   const [allPeopleData, setAllPeopleData] = useState(null);
   const [allGroupsData, setAllGroupsData] = useState(null);
@@ -260,29 +260,47 @@ const PersonInfoPopup = ({ featureInfo, onClose, mapInstance }) => {
   const [groupsError, setGroupsError] = useState(null);
   const popupRef = useRef(null);
 
+  // Create or update popup when featureInfo changes
   useEffect(() => {
-    if (featureInfo && mapInstance && !popupRef.current) {
-      const popup = new mapboxgl.Popup({
-        closeButton: true,
-        closeOnClick: false,
-        maxWidth: '240px',
-        anchor: 'bottom'
-      })
-      .setLngLat([featureInfo.longitude, featureInfo.latitude])
-      .setDOMContent(document.createElement('div'))
-      .addTo(mapInstance);
+    if (featureInfo && mapInstance) {
+      // If popup exists, just update its position
+      if (popupRef.current) {
+        popupRef.current.setLngLat([featureInfo.longitude, featureInfo.latitude]);
+      } else {
+        // Create new popup
+        const popup = new mapboxgl.Popup({
+          closeButton: true,
+          closeOnClick: false,
+          maxWidth: '240px',
+          anchor: 'bottom'
+        })
+        .setLngLat([featureInfo.longitude, featureInfo.latitude])
+        .setHTML('<div>Loading...</div>') // Set initial content
+        .addTo(mapInstance);
 
-      popup.on('close', onClose);
-      popupRef.current = popup;
+        popup.on('close', onClose);
+        popupRef.current = popup;
+      }
     }
 
+    // Cleanup function - only remove popup when component unmounts or featureInfo becomes null
+    return () => {
+      if (!featureInfo && popupRef.current) {
+        popupRef.current.remove();
+        popupRef.current = null;
+      }
+    };
+  }, [featureInfo?.longitude, featureInfo?.latitude, featureInfo?.personIdToLookup, mapInstance, onClose]);
+
+  // Cleanup on unmount
+  useEffect(() => {
     return () => {
       if (popupRef.current) {
         popupRef.current.remove();
         popupRef.current = null;
       }
     };
-  }, [featureInfo, mapInstance, onClose]);
+  }, []);
 
   useEffect(() => {
     setIsLoadingPeople(true);
@@ -296,7 +314,6 @@ const PersonInfoPopup = ({ featureInfo, onClose, mapInstance }) => {
     }
   }, []);
 
-  // Replace the existing useEffect for fetching groups data
   useEffect(() => {
     setIsLoadingGroups(true);
     setGroupsError(null);
@@ -344,43 +361,58 @@ const PersonInfoPopup = ({ featureInfo, onClose, mapInstance }) => {
     }
   }, [personToDisplay, allGroupsData, isLoadingGroups, groupsError]);
 
+  // Update popup content whenever data changes
   useEffect(() => {
-    if (popupRef.current && personToDisplay) {
-      const popupContent = `
-        <div class="popup-content">
-          <div class="popup-title">
-            ${personToDisplay.fields.name || 'Unknown Name'}
+    if (popupRef.current && featureInfo) {
+      let popupContent;
+      
+      if (isLoadingPeople && !allPeopleData) {
+        popupContent = `
+          <div class="popup-content">
+            <div class="popup-loading">Loading person data...</div>
           </div>
-          <div>
-            Group: 
-            ${isLoadingGroups ? '<span>Loading groups...</span>' : 
-              (!isLoadingGroups && groupsError ? '<span class="popup-error">Error loading groups</span>' : 
-              `<span>${groupNamesToDisplay}</span>`)}
+        `;
+      } else if (peopleError) {
+        popupContent = `
+          <div class="popup-content">
+            <div class="popup-error">Error: ${peopleError}</div>
           </div>
-          <div class="popup-group">
-            <a 
-              href="https://theographic.netlify.app/person/${personToDisplay.fields.personLookup}"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="popup-link"
-            >
-              More Details
-            </a>
+        `;
+      } else if (personToDisplay) {
+        popupContent = `
+          <div class="popup-content">
+            <div class="popup-title">
+              ${personToDisplay.fields.name || 'Unknown Name'}
+            </div>
+            <div>
+              Group: 
+              ${isLoadingGroups ? '<span>Loading groups...</span>' : 
+                (!isLoadingGroups && groupsError ? '<span class="popup-error">Error loading groups</span>' : 
+                `<span>${groupNamesToDisplay}</span>`)}
+            </div>
+            <div class="popup-group">
+              <a 
+                href="https://theographic.netlify.app/person/${personToDisplay.fields.personLookup}"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="popup-link"
+              >
+                More Details
+              </a>
+            </div>
           </div>
-          ${isLoadingPeople && !allPeopleData ? '<div class="popup-loading">Loading person data...</div>' : ''}
-          ${peopleError ? `<div class="popup-error">Error: ${peopleError}</div>` : ''}
-        </div>
-      `;
+        `;
+      } else {
+        popupContent = `
+          <div class="popup-content">
+            <div>Person not found</div>
+          </div>
+        `;
+      }
+      
       popupRef.current.setHTML(popupContent);
     }
-  }, [personToDisplay, groupNamesToDisplay, isLoadingPeople, isLoadingGroups, peopleError, groupsError, allPeopleData]);
-
-  if (!featureInfo || !personToDisplay) {
-    if (isLoadingPeople && !allPeopleData) {
-        return null;
-    }
-    return null;
-  }
+  }, [personToDisplay, groupNamesToDisplay, isLoadingPeople, isLoadingGroups, peopleError, groupsError, allPeopleData, featureInfo]);
 
   return null; // Popup is handled via Mapbox popup DOM manipulation
 };
@@ -404,19 +436,10 @@ const SearchBar = ({ mapInstance, placeholder = "Search", flyToZoom = 6, onBefor
   }];
 
   useEffect(() => {
-    console.log("🔍 SearchBar useEffect running...");
-    console.log("📊 allSearchableItems.length:", allSearchableItems.length);
-    
     if (allSearchableItems.length > 0) {
-      console.log("❌ allSearchableItems already has items - returning early");
       return;
     }
-    
-    console.log("✅ Processing features from static featuresCache...");
-
     const processFeatures = () => {
-      console.log("🔍 Starting feature processing from static cache...");
-      
       const uniqueItemsMap = new Map();
 
       // Helper function to get cached features (similar to the one in main component)
@@ -444,18 +467,8 @@ const SearchBar = ({ mapInstance, placeholder = "Search", flyToZoom = 6, onBefor
       };
       
       for (const config of layersConfigs) {
-        console.log(`🔍 Processing layer config:`, config);
-        
         try {
           const features = getCachedFeatures(config.layerId);
-          console.log(`📊 Found ${features.length} features for layer ${config.layerId}`);
-          
-          // Debug: Check first few features
-          if (features.length > 0) {
-            console.log("📝 Sample feature properties:", features[0].properties);
-            console.log("🗂️ All property keys:", Object.keys(features[0].properties || {}));
-          }
-
           for (const feature of features) {
             const name = feature.properties?.[config.nameProperty];
             const coords = getCoordinates(feature.geometry);
@@ -486,9 +499,6 @@ const SearchBar = ({ mapInstance, placeholder = "Search", flyToZoom = 6, onBefor
       }
       
       const finalItems = Array.from(uniqueItemsMap.values());
-      console.log(`✅ Final searchable items: ${finalItems.length}`);
-      console.log("📋 Sample items:", finalItems.slice(0, 3));
-      
       setAllSearchableItems(finalItems);
     };
     
@@ -657,7 +667,6 @@ const AncestryApp = () => {
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
         
         map.on('load', () => {
-          console.log('Map loaded successfully with fixed style');
           setIsMapInitialized(true);
           setMapInstance(map);
           
