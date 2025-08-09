@@ -1,13 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-// Import the shared features cache (stop building it here)
-import { featuresCache } from './features';
-import peopleData from './data/people.json';
-import groupsData from './data/peopleGroups.json';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { featuresCache, peopleData, groupsData } from './features';
 import './ancestry-styles.css';
-
-// Access CDN libraries as globals
-const { distance, point } = window.turf;
-const mapboxgl = window.mapboxgl;
+const getStyleOf = () => {}
 
 // Constants
 const MAPBOX_TOKEN = "pk.eyJ1IjoiYmlibGV2aXoiLCJhIjoiY2pjOTVhazJ1MDlqbzMzczFoamd3MzFnOSJ9.7k1RJ5oh-LNaYuADxsgx4Q";
@@ -248,7 +242,6 @@ const dynamicOriginalLabelOpacities = new Map();
 let globalConstantsInitialized = false;
 
 // PersonInfoPopup Component
-// PersonInfoPopup Component
 const PersonInfoPopup = ({ featureInfo, onClose, mapInstance }) => {
   const [allPeopleData, setAllPeopleData] = useState(null);
   const [allGroupsData, setAllGroupsData] = useState(null);
@@ -268,7 +261,7 @@ const PersonInfoPopup = ({ featureInfo, onClose, mapInstance }) => {
         popupRef.current.setLngLat([featureInfo.longitude, featureInfo.latitude]);
       } else {
         // Create new popup
-        const popup = new mapboxgl.Popup({
+        const popup = new window.mapboxgl.Popup({
           closeButton: true,
           closeOnClick: false,
           maxWidth: '240px',
@@ -628,13 +621,13 @@ const AncestryApp = () => {
     useEffect(() => {
     if (!mapContainerRef.current || mapInstance || mapInitializationRef.current) return;
 
-    mapboxgl.accessToken = MAPBOX_TOKEN;
+    window.mapboxgl.accessToken = MAPBOX_TOKEN;
     let currentMap = null; // Track the current map instance
     
     const fetchAndFixStyle = async () => {
       try {
         
-        const response = await fetch(
+        const response = await window.fetch(
           `https://api.mapbox.com/styles/v1/bibleviz/cm6yc8h0i001w01quf2orebmn?access_token=${MAPBOX_TOKEN}`
         );
         
@@ -652,7 +645,7 @@ const AncestryApp = () => {
 
     const createMapWithStyle = async (styleJSON) => {
       try {
-        const map = new mapboxgl.Map({
+        const map = new window.mapboxgl.Map({
           container: mapContainerRef.current,
           style: styleJSON,
           center: styleJSON.center || [0, 0],
@@ -664,7 +657,7 @@ const AncestryApp = () => {
         currentMap = map; // Store reference for cleanup
         
         // Add navigation control
-        map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+        map.addControl(new window.mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
         
         map.on('load', () => {
           setIsMapInitialized(true);
@@ -782,7 +775,7 @@ const AncestryApp = () => {
       for (let i = 0; i < points.length; i++) {
         const currentPoint = points[i];
         const distances = points.map((p, idx) => ({ 
-          distance: idx === i ? Infinity : distance(point(currentPoint), point(p)), 
+          distance: idx === i ? Infinity : window.turf.distance(window.turf.point(currentPoint), window.turf.point(p)), 
           index: idx 
         }));
         const sortedIndices = distances
@@ -1073,64 +1066,67 @@ const AncestryApp = () => {
   };
 
   return (
-    <div className="page-container">
-      <div className="content-wrapper">
-        <header className="header">
-          <h1><i>God's Bloodline</i></h1>
-          <div className="header-controls">
-            <div className="order-1">
-              <form>
-                <ul id="ancestry-legend">
-                  {filterOptions.map((option) => {
-                    const htmlId = `ancestry-legend-${getFilterIdFromOptionId(option.id)}`;
-                    return (
-                      <li key={option.id}>
-                        <input
-                          id={htmlId}
-                          type="radio"
-                          name="ancestry-legend"
-                          value={option.id}
-                          onChange={handleFilterChange}
-                          defaultChecked={option.defaultChecked}
-                          disabled={!isMapInitialized}
-                        />
-                        <label htmlFor={htmlId}>
-                          {option.text}
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </form>
+    <>
+      <style>{getStyleOf('style.css')}</style>
+      <div className="page-container">
+        <div className="content-wrapper">
+          <header className="header">
+            <h1><i>God's Bloodline</i></h1>
+            <div className="header-controls">
+              <div className="order-1">
+                <form>
+                  <ul id="ancestry-legend">
+                    {filterOptions.map((option) => {
+                      const htmlId = `ancestry-legend-${getFilterIdFromOptionId(option.id)}`;
+                      return (
+                        <li key={option.id}>
+                          <input
+                            id={htmlId}
+                            type="radio"
+                            name="ancestry-legend"
+                            value={option.id}
+                            onChange={handleFilterChange}
+                            defaultChecked={option.defaultChecked}
+                            disabled={!isMapInitialized}
+                          />
+                          <label htmlFor={htmlId}>
+                            {option.text}
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </form>
+              </div>
+              <div className="order-2">
+                <SearchBar
+                  mapInstance={mapInstance}
+                  flyToZoom={6}
+                  placeholder="Search"
+                  onBeforeSelect={handleBeforeSearch}
+                />
+              </div>
             </div>
-            <div className="order-2">
-              <SearchBar
-                mapInstance={mapInstance}
-                flyToZoom={6}
-                placeholder="Search"
-                onBeforeSelect={handleBeforeSearch}
-              />
-            </div>
-          </div>
-        </header>
-        
-        {!isMapSettled && <div className="map-loading">Loading map...</div>}
-        
-        <div 
-          ref={mapContainerRef}
-          className="map-container"
-          style={{ visibility: isMapSettled ? 'visible' : 'hidden' }}
-        />
-        
-        {clickedFeatureForPopup && (
-          <PersonInfoPopup
-            featureInfo={clickedFeatureForPopup}
-            onClose={() => setClickedFeatureForPopup(null)}
-            mapInstance={mapInstance}
+          </header>
+          
+          {!isMapSettled && <div className="map-loading">Loading map...</div>}
+          
+          <div 
+            ref={mapContainerRef}
+            className="map-container"
+            style={{ visibility: isMapSettled ? 'visible' : 'hidden' }}
           />
-        )}
+          
+          {clickedFeatureForPopup && (
+            <PersonInfoPopup
+              featureInfo={clickedFeatureForPopup}
+              onClose={() => setClickedFeatureForPopup(null)}
+              mapInstance={mapInstance}
+            />
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
