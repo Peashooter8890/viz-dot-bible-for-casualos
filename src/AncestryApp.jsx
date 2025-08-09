@@ -121,97 +121,21 @@ const includeLines = {
 
 // Style fixing functions (add after constants, before utility functions)
 const fixStyleJSON = (styleJSON) => {
-  console.log('🔧 Starting style fixes...');
   let fixedStyle = JSON.parse(JSON.stringify(styleJSON)); // Deep clone
   
   // Fix each layer
   if (fixedStyle.layers) {
     fixedStyle.layers.forEach((layer, index) => {
-      
-      // Fix 1: Remove invalid text-size-scale-range property
+      // Remove invalid text-size-scale-range property
       if (layer.layout && layer.layout['text-size-scale-range']) {
         delete layer.layout['text-size-scale-range'];
-        console.log(`Fixed: Removed text-size-scale-range from layer ${layer.id}`);
-      }
-      
-      // Fix 2: Simplify match expressions
-      if (layer.paint && layer.paint['circle-color'] && Array.isArray(layer.paint['circle-color'])) {
-        fixedStyle.layers[index].paint['circle-color'] = fixMatchExpression(layer.paint['circle-color']);
-      }
-      
-      if (layer.paint && layer.paint['line-color'] && Array.isArray(layer.paint['line-color'])) {
-        fixedStyle.layers[index].paint['line-color'] = fixMatchExpression(layer.paint['line-color']);
-      }
-      
-      // Fix 3: Add missing text color for mid-level layer
-      if (layer.id === 'labels-mid-level' && layer.paint && !layer.paint['text-color']) {
-        fixedStyle.layers[index].paint['text-color'] = 'rgba(0, 0, 0, 0.7)';
-        console.log(`Fixed: Added text-color to ${layer.id}`);
-      }
-      
-      // Fix 4: Simplify geometry filters
-      if (layer.filter && Array.isArray(layer.filter)) {
-        const newFilter = fixGeometryFilter(layer.filter);
-        if (newFilter !== layer.filter) {
-          fixedStyle.layers[index].filter = newFilter;
-        }
       }
     });
   }
-  
-  // Fix 5: Remove null terrain property
   if (fixedStyle.terrain === null) {
     delete fixedStyle.terrain;
-    console.log(`Fixed: Removed null terrain property`);
   }
-  
-  console.log(`🎉 Style fixes completed!`);
   return fixedStyle;
-};
-
-const fixMatchExpression = (matchExpr) => {
-  if (!Array.isArray(matchExpr) || matchExpr[0] !== 'match') {
-    return matchExpr;
-  }
-  
-  // Create a new match expression with simplified values
-  const newMatchExpr = ['match', matchExpr[1]]; // Keep the property getter
-  
-  // Process the cases - skip complex array values and use simple strings
-  for (let i = 2; i < matchExpr.length - 1; i += 2) {
-    const key = matchExpr[i];
-    const value = matchExpr[i + 1];
-    
-    if (Array.isArray(key)) {
-      // If key is an array, use the first string value
-      const simpleKey = key.find(k => typeof k === 'string' && !k.startsWith('['));
-      if (simpleKey) {
-        newMatchExpr.push(simpleKey, value);
-      }
-    } else if (typeof key === 'string' && !key.startsWith('[')) {
-      // Keep simple string keys
-      newMatchExpr.push(key, value);
-    }
-  }
-  
-  // Add the default value (last item)
-  newMatchExpr.push(matchExpr[matchExpr.length - 1]);
-  
-  return newMatchExpr;
-};
-
-const fixGeometryFilter = (filter) => {
-  // Convert match-based geometry filters to simpler == filters
-  if (Array.isArray(filter) && filter[0] === 'match' && filter[1] && 
-      Array.isArray(filter[1]) && filter[1][0] === 'geometry-type') {
-    
-    const geomType = filter[2]; // The geometry type array
-    if (Array.isArray(geomType) && geomType.length === 1) {
-      // Convert to simple == filter
-      return ['==', ['geometry-type'], geomType[0]];
-    }
-  }
-  return filter;
 };
 
 // Utility functions
@@ -691,7 +615,6 @@ const AncestryApp = () => {
     
     const fetchAndFixStyle = async () => {
       try {
-        console.log('🔄 Fetching style from Mapbox API...');
         
         const response = await fetch(
           `https://api.mapbox.com/styles/v1/bibleviz/cm6yc8h0i001w01quf2orebmn?access_token=${MAPBOX_TOKEN}`
@@ -702,14 +625,8 @@ const AncestryApp = () => {
         }
         
         const originalStyle = await response.json();
-        console.log('✅ Original style fetched successfully');
-        
-        console.log('🔧 Applying fixes to style...');
         const fixedStyle = fixStyleJSON(originalStyle);
-        
-        console.log('🗺️ Creating map with fixed style...');
         await createMapWithStyle(fixedStyle);
-        
       } catch (error) {
         console.error(`❌ Error: ${error.message}`);
       }
@@ -943,6 +860,29 @@ const AncestryApp = () => {
     globalConstantsInitialized = true;
   };
 
+  const getCachedFeatures = (layerId) => {
+    const cache = featuresCache;
+    if (!cache) return [];
+
+    // If it's a Map
+    if (typeof cache.get === 'function') {
+      return cache.get(layerId) || [];
+    }
+
+    // If it’s an object with a "featuresCache" property
+    if (cache.featuresCache) {
+      const fromNested = cache.featuresCache[layerId];
+      if (Array.isArray(fromNested)) return fromNested;
+      if (fromNested && Array.isArray(fromNested.features)) return fromNested.features;
+    }
+
+    // Direct properties or FeatureCollection
+    if (Array.isArray(cache[layerId])) return cache[layerId];
+    if (cache[layerId] && Array.isArray(cache[layerId].features)) return cache[layerId].features;
+
+    return [];
+  };
+
   const fitMapToGroup = (mapInstance, groupId) => {
     if (groupId === "all") {
       flyToMapBounds(mapInstance, 0.1, INITIAL_MAP_BOUNDS, 16);
@@ -962,7 +902,7 @@ const AncestryApp = () => {
     };
 
     ["father-points", "father-lines"].forEach(layerId => {
-      const cachedFeatures = featuresCache.get(layerId) || [];
+      const cachedFeatures = getCachedFeatures(layerId) || [];
       
       const groupFeatures = cachedFeatures.filter(feature => {
         const props = feature.properties;
