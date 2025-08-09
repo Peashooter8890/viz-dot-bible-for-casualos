@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bible Genealogies (Interactive Diagram)</title>
+    
+    <!-- External Dependencies -->
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
+    
+    <style>
+        :root {
+            --tw-gray-100: rgb(241 245 249);
+            --tw-gray-300: rgb(203 213 225);
+            --tw-gray-800: rgb(30 41 59);
+            --tw-blue-500: rgb(14 165 233);
+            --tw-red-500: rgb(239 68 68);
+            --tw-purple-600: rgb(147 51 234);
+            --tw-purple-400: rgb(196 181 253);
+            --tw-red-300: rgb(252 165 165);
+            --tw-orange-300: rgb(253 186 116);
+            --tw-yellow-700: rgb(161 98 7);
+            --tw-pink-500: rgb(236 72 153);
+            --tw-yellow-800: rgb(133 77 14);
+            --tw-orange-500: rgb(249 115 22);
+            --tw-pink-300: rgb(249 168 212);
+            --tw-green-400: rgb(74 222 128);
+            --tw-green-600: rgb(22 163 74);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'PT Sans', sans-serif;
+            background-color: var(--tw-gray-100);
+            color: #333;
+            overflow: hidden;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            overscroll-behavior-y: none;
+        }
+
+        body::-webkit-scrollbar {
+            display: none;
+        }
+
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+
+        .page-container {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            max-height: 100vh;
+            padding: 0.75rem;
+        }
+
+        .content-wrapper {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* Header styles */
+        .header {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            margin: 0.75rem 0;
+            padding: 0 0.5rem;
+        }
+
+        .header h1 {
+            margin: 0;
+            margin-left: 0.25rem;
+            font-family: 'Georgia', ui-serif, serif;
+            font-style: italic;
+            font-size: 1.5rem;
+            line-height: 2rem;
+            font-weight: normal;
+            color: black;
+        }
+
+        .header-controls {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 0;
+        }
+
+        .order-1 {
+            order: 1;
+            width: 100%;
+        }
+
+        .order-2 {
+            order: 2;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        /* People legend (radio button) styles */
+        #people-legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem 0.5rem;
+            padding: 0.25rem;
+            margin: 0;
+            list-style: none;
+        }
+
+        #people-legend input[type="radio"] {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+
+        #people-legend label {
+            cursor: pointer;
+            padding: 0.125rem 0.5rem 0.125rem;
+            padding-top: 0.25rem;
+            border-bottom: 4px solid;
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            color: black;
+        }
+
+        #people-legend input[type="radio"]:checked + label {
+            font-weight: 700;
+        }
+
+        /* Individual filter styles */
+        #people-legend-all + label { border-bottom-color: var(--tw-gray-300); }
+        #people-legend-all:checked + label { background-color: var(--tw-gray-300); color: black; }
+
+        #people-legend-genealogy-of-jesus + label { border-bottom-color: var(--tw-red-500); }
+        #people-legend-genealogy-of-jesus:checked + label { background-color: var(--tw-red-500); color: white; }
+
+        #people-legend-tribe-of-judah + label { border-bottom-color: var(--tw-purple-600); }
+        #people-legend-tribe-of-judah:checked + label { background-color: var(--tw-purple-600); color: white; }
+
+        #people-legend-tribe-of-levi + label { border-bottom-color: var(--tw-purple-400); }
+        #people-legend-tribe-of-levi:checked + label { background-color: var(--tw-purple-400); color: black; }
+
+        #people-legend-tribe-of-joseph + label { border-bottom-color: var(--tw-red-300); }
+        #people-legend-tribe-of-joseph:checked + label { background-color: var(--tw-red-300); color: black; }
+
+        #people-legend-tribe-of-benjamin + label { border-bottom-color: var(--tw-orange-300); }
+        #people-legend-tribe-of-benjamin:checked + label { background-color: var(--tw-orange-300); color: black; }
+
+        #people-legend-tribe-of-reuben + label { border-bottom-color: var(--tw-yellow-700); }
+        #people-legend-tribe-of-reuben:checked + label { background-color: var(--tw-yellow-700); color: white; }
+
+        #people-legend-tribe-of-simeon + label { border-bottom-color: var(--tw-pink-500); }
+        #people-legend-tribe-of-simeon:checked + label { background-color: var(--tw-pink-500); color: white; }
+
+        #people-legend-tribe-of-issachar + label { border-bottom-color: var(--tw-red-500); }
+        #people-legend-tribe-of-issachar:checked + label { background-color: var(--tw-red-500); color: white; }
+
+        #people-legend-tribe-of-naphtali + label { border-bottom-color: var(--tw-yellow-800); }
+        #people-legend-tribe-of-naphtali:checked + label { background-color: var(--tw-yellow-800); color: white; }
+
+        #people-legend-tribe-of-asher + label { border-bottom-color: var(--tw-orange-500); }
+        #people-legend-tribe-of-asher:checked + label { background-color: var(--tw-orange-500); color: white; }
+
+        #people-legend-tribe-of-zebulun + label { border-bottom-color: var(--tw-pink-300); }
+        #people-legend-tribe-of-zebulun:checked + label { background-color: var(--tw-pink-300); color: black; }
+
+        #people-legend-tribe-of-gad + label { border-bottom-color: var(--tw-green-400); }
+        #people-legend-tribe-of-gad:checked + label { background-color: var(--tw-green-400); color: black; }
+
+        #people-legend-tribe-of-dan + label { border-bottom-color: var(--tw-green-600); }
+        #people-legend-tribe-of-dan:checked + label { background-color: var(--tw-green-600); color: white; }
+
+        /* Search bar styles */
+        .search-container {
+            position: relative;
+            width: 100%;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            color: var(--tw-gray-800);
+            background-color: white;
+            border: 1px solid var(--tw-gray-300);
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--tw-blue-500);
+            box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+        }
+
+        .search-suggestions {
+            position: absolute;
+            z-index: 20;
+            width: 100%;
+            margin-top: 0.25rem;
+            background-color: white;
+            border: 1px solid var(--tw-gray-300);
+            border-radius: 0.375rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            max-height: 15rem;
+            overflow-y: auto;
+            font-size: 0.875rem;
+        }
+
+        .search-suggestion {
+            padding: 0.5rem 1rem;
+            color: #374151;
+            cursor: pointer;
+        }
+
+        .search-suggestion:hover {
+            background-color: var(--tw-blue-500);
+            color: white;
+        }
+
+        /* Map container styles */
+        .ancestry-container {
+            position: relative;
+            margin: 0.5rem 0.75rem 0.75rem;
+            overflow: hidden;
+            border: 2px solid var(--tw-gray-300);
+            flex-grow: 1;
+            min-height: 0;
+        }
+
+        .map-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            bottom: 0;
+            background-color: white;
+        }
+
+        .loading-message {
+            margin: 0.75rem;
+            text-align: center;
+        }
+
+        /* Navigation controls */
+        .mapboxgl-ctrl-group {
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Popup styles */
+        .mapboxgl-popup-content {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            max-width: 240px;
+        }
+
+        .popup-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .popup-group {
+            margin-bottom: 0.5rem;
+        }
+
+        .popup-link {
+            display: inline-block;
+            margin-top: 0.5rem;
+            color: var(--tw-blue-500);
+            text-decoration: underline;
+        }
+
+        .popup-link:hover {
+            color: #1d4ed8;
+        }
+
+        .popup-error {
+            font-size: 0.75rem;
+            color: #dc2626;
+            margin-top: 0.25rem;
+        }
+
+        .popup-loading {
+            font-size: 0.75rem;
+            font-style: italic;
+            color: #6b7280;
+            margin-top: 0.25rem;
+        }
+
+        /* Media queries */
+        @media (min-width: 768px) {
+            .header-controls {
+                flex-direction: row;
+                justify-content: space-between;
+                width: auto;
+                gap: 1rem;
+            }
+            
+            .order-1 {
+                width: auto;
+            }
+            
+            .order-2 {
+                width: auto;
+                max-width: 300px;
+            }
+            
+            .header h1 {
+                margin-top: 0;
+            }
+            
+            .search-container {
+                width: 12rem;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .header {
+                justify-content: space-between;
+            }
+            .header h1 {
+                font-size: 1.875rem;
+                line-height: 2.25rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script>
+        const { useState, useEffect, useCallback, useRef, useMemo } = React;
+        const { Map, NavigationControl, useMap, Popup } = window.mapboxgl;
+        
+        // Constants
+        const MAPBOX_TOKEN = "pk.eyJ1IjoiYmlibGV2aXoiLCJhIjoiY2pjOTVhazJ1MDlqbzMzczFoamd3MzFnOSJ9.7k1RJ5oh-LNaYuADxsgx4Q";
+        const PEOPLE_MAP_STYLE = "mapbox://styles/bibleviz/cm6yc8h0i001w01quf2orebmn";
+        const LABEL_LAYER_IDS = ["labels-top-level", "labels-mid-level", "labels-bottom-level"];
+        const PEOPLE_LAYER_IDS = [...["father-points", "father-lines"], ...LABEL_LAYER_IDS];
+        const GROUP_PROPERTY_NAME = "groupLabel";
+        const INTERACTIVE_LAYER_IDS = ['father-points', 'genealogy-lines', ...LABEL_LAYER_IDS];
+        const INITIAL_MAP_BOUNDS = [[-23.642578125, -24.00632619875111], [23.917236328125, 23.372513822359466]];
+        const THEOGRAPHIC_PEOPLE_URL = 'https://raw.githubusercontent.com/robertrouse/theographic-bible-metadata/master/json/people.json';
+        const THEOGRAPHIC_GROUPS_URL = 'https://raw.githubusercontent.com/robertrouse/theographic-bible-metadata/master/json/peopleGroups.json';
+
+        // Filter options
+        const filterOptions = [
+            {
+                id: "all",
+                text: "ALL",
+                borderColor: "var(--tw-gray-300)",
+                activeColor: "var(--tw-gray-300)",
+                defaultChecked: true,
+            },
+            {
+                id: "Genealogy of Jesus",
+                text: "Jesus",
+                borderColor: "var(--tw-red-500)",
+                activeColor: "var(--tw-red-500)",
+            },
+            {
+                id: "Tribe of Judah",
+                text: "Judah",
+                borderColor: "var(--tw-purple-600)",
+                activeColor: "var(--tw-purple-600)",
+            },
+            {
+                id: "Tribe of Levi",
+                text: "Levi",
+                borderColor: "var(--tw-purple-400)",
+                activeColor: "var(--tw-purple-400)",
+            },
+            {
+                id: "Tribe of Joseph",
+                text: "Joseph",
+                borderColor: "var(--tw-red-300)",
+                activeColor: "var(--tw-red-300)",
+            },
+            {
+                id: "Tribe of Benjamin",
+                text: "Benjamin",
+                borderColor: "var(--tw-orange-300)",
+                activeColor: "var(--tw-orange-300)",
+            },
+            {
+                id: "Tribe of Reuben",
+                text: "Reuben",
+                borderColor: "var(--tw-yellow-700)",
+                activeColor: "var(--tw-yellow-700)",
+            },
+            {
+                id: "Tribe of Simeon",
+                text: "Simeon",
+                borderColor: "var(--tw-pink-500)",
+                activeColor: "var(--tw-pink-500)",
+            },
+            {
+                id: "Tribe of Issachar",
+                text: "Issachar",
+                borderColor: "var(--tw-red-500)",
+                activeColor: "var(--tw-red-500)",
+            },
+            {
+                id: "Tribe of Naphtali",
+                text: "Naphtali",
+                borderColor: "var(--tw-yellow-800)",
+                activeColor: "var(--tw-yellow-800)",
+            },
+            {
+                id: "Tribe of Asher",
+                text: "Asher",
+                borderColor: "var(--tw-orange-500)",
+                activeColor: "var(--tw-orange-500)",
+            },
+            {
+                id: "Tribe of Zebulun",
+                text: "Zebulun",
+                borderColor: "var(--tw-pink-300)",
+                activeColor: "var(--tw-pink-300)",
+            },
+            {
+                id: "Tribe of Gad",
+                text: "Gad",
+                borderColor: "var(--tw-green-400)",
+                activeColor: "var(--tw-green-400)",
+            },
+            {
+                id: "Tribe of Dan",
+                text: "Dan",
+                borderColor: "var(--tw-green-600)",
+                activeColor: "var(--tw-green-600)",
+            },
+        ];
+
+        // Judah Jesus Points data
+        const judahJesusPoints = [
+            [23.8608, -0.3938], [6.2762, -4.424], [12.2444, -2.6098], [1.112, -3.1458], [23.9148, 0.97],
+            [20.4832, 0.9942], [22.9098, -1.4676], [23.5296, -1.0954], [20.8556, 0.4062], [21.2846, -0.2034],
+            [13.048, -0.3482], [13.494, 0.6868], [23.912, 0.2868], [21.7408, -0.7756], [22.23, -1.2534],
+            [11.7828, -3.9872], [12.6234, -1.4078], [11.273, -5.6906], [23.4662, 3.8416], [17.652, 6.2292],
+            [20.1028, 1.591], [21.1102, 10.0884], [19.529, 12.8028], [13.8152, 20.3572], [13.8662, 11.3228],
+            [18.7156, 3.3212], [19.6552, 2.2328], [21.8002, 8.7164], [4.1726, 22.8074], [16.6668, 18.349],
+            [20.3434, 11.4436], [6.284, 20.098], [11.5428, 21.0962], [22.3954, 7.3198], [17.8716, 15.6954],
+            [23.2904, 4.5504], [8.8628, 18.339], [23.7484, 2.4296], [18.1526, 3.8786], [15.0776, 20.1568],
+            [21.4664, 9.4052], [14.7772, 3.1912], [11.129, 16.0448], [15.321, 7.7294], [19.9402, 12.1208],
+            [12.4316, 14.2496], [3.805, 21.7692], [20.7348, 10.7672], [12.7724, 13.6218], [14.184, 10.5526],
+            [17.4044, 4.3082], [2.6434, 22.736], [8.3116, 18.8868], [23.6192, 3.1342], [23.0934, 5.2596],
+            [6.877, 22.4988], [18.2818, 14.9326], [17.0688, 17.3762], [9.4812, 17.782], [22.1102, 8.021],
+            [5.567, 22.7216], [19.1132, 13.4946], [10.4202, 21.4672], [12.0122, 14.8744], [16.2846, 5.5798],
+            [12.6818, 20.7436], [10.6434, 16.615], [4.9874, 20.9482], [11.581, 15.4674], [7.2792, 19.5282],
+            [22.6564, 6.614], [9.2838, 21.8396], [17.4674, 16.5032], [16.3692, 19.3408], [16.4022, 20.8218],
+            [8.1096, 22.1922], [13.142, 12.4762], [18.6966, 14.202], [19.1928, 2.8008], [14.5876, 9.3766],
+            [10.105, 17.2408], [22.8746, 5.9684], [23.8466, 1.7292], [13.9938, 1.7844]
+        ];
+
+        const excludeLines = {
+            'Nathan-Menan': [[17.4044, 4.3082], [18.7156, 3.3212]],
+            'Nathan-Absalom': [[17.4044, 4.3082], [17.652, 6.2292]],
+            'Jesse-Boaz': [[14.7772, 3.1912], [13.494, 0.6868]],
+            'Joseph-Mary': [[15.0776, 20.1568], [16.3692, 19.3408]],
+            'Abiud-Pedaiah': [[4.1726, 22.8074], [3.805, 21.7692]]
+        };
+
+        const includeLines = {
+            'Jesse-David': [[14.7772, 3.1912], [16.2846, 5.5798]],
+            'Jacob-Judah': [[-6.011, -3.4138], [1.112, -3.1458]],
+            'Absalom-Tamar': [[17.652, 6.2292], [18.4886, 6.675]]
+        };
+
+        // Global variables
+        let globalMap = null;
+        let globalConstantsInitialized = false;
+        const featuresCache = new Map();
+        const genealogyLinesCache = new Map();
+        const dynamicOriginalLabelOpacities = new Map();
+
+        // Utility functions
+        const calculateMapPadding = (mapInstance, paddingPercent) => {
+            const canvas = mapInstance.getCanvas();
+            return {
+                top: canvas.clientHeight * paddingPercent,
+                bottom: canvas.clientHeight * paddingPercent,
+                left: canvas.clientWidth * paddingPercent,
+                right: canvas.clientWidth * paddingPercent,
+            };
+        };
+
+        const flyToMapBounds = (mapInstance, paddingPercent, bounds, maxZoom = 16) => {
+            const padding = calculateMapPadding(mapInstance, paddingPercent);
+            const camera = mapInstance.cameraForBounds(bounds, { padding, maxZoom });
+
+            if (!camera) {
+                console.warn("Camera could not be determined for bounds. Flying to default initial view.");
+                mapInstance.flyTo({
+                    center: [0, 0],
+                    zoom: 3,
+                    bearing: 0,
+                    pitch: 0,
+                    duration: 1000,
+                });
+                return;
+            }
+
+            mapInstance.flyTo({
+                center: camera.center,
+                zoom: camera.zoom,
+                bearing: 0,
+                pitch: 0,
+                duration: 1000,
+            });
+        };
+
+        const getCoordinates = (geometry) => {
+            if (geometry?.type === 'Point' && Array.isArray(geometry.coordinates) && geometry.coordinates.length >= 2) {
+                return [geometry.coordinates[0], geometry.coordinates[1]];
+            }
+            return null;
+        };
+
+        // Search functionality
+        const SearchBar = ({ allSearchableItems, onSelect, onBeforeSelect }) => {
+            const [query, setQuery] = useState("");
+            const [suggestions, setSuggestions] = useState([]);
+            const [isDropdownVisible, setIsDropdownVisible] = useState(false);
+            const searchContainerRef = useRef(null);
+
+            useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+                        setIsDropdownVisible(false);
+                    }
+                };
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+
+            const filterAndSetSuggestions = useCallback((currentQuery) => {
+                if (currentQuery.trim() === "") {
+                    setSuggestions([]);
+                    setIsDropdownVisible(false);
+                } else {
+                    const q = currentQuery.toLowerCase();
+                    const filtered = allSearchableItems.filter(item => 
+                        item.name.toLowerCase().includes(q)
+                    );
+
+                    const sorted = filtered.sort((a, b) => {
+                        const nameA = a.name.toLowerCase();
+                        const nameB = b.name.toLowerCase();
+                        const idxA = nameA.indexOf(q);
+                        const idxB = nameB.indexOf(q);
+                        
+                        if (idxA !== idxB) return idxA - idxB;
+                        if ((a.verseCount || 0) !== (b.verseCount || 0)) return (b.verseCount || 0) - (a.verseCount || 0);
+                        if (a.name.length !== b.name.length) return a.name.length - b.name.length;
+                        return nameA.localeCompare(nameB);
+                    });
+
+                    setSuggestions(sorted);
+                    setIsDropdownVisible(sorted.length > 0);
+                }
+            }, [allSearchableItems]);
+
+            const handleInputChange = (event) => {
+                const value = event.target.value;
+                setQuery(value);
+                filterAndSetSuggestions(value);
+            };
+
+            const handleSuggestionClick = (item) => {
+                setQuery(item.name);
+                setIsDropdownVisible(false);
+                setSuggestions([]);
+
+                if (onBeforeSelect) onBeforeSelect(item);
+
+                if (globalMap) {
+                    globalMap.flyTo({
+                        center: item.coordinates,
+                        zoom: 6,
+                        essential: true,
+                    });
+                }
+                if (onSelect) onSelect(item);
+            };
+
+            const handleInputFocus = () => {
+                if (query.trim() !== "" && allSearchableItems.length > 0) {
+                    if (suggestions.length > 0 && suggestions.every(s => s.name.toLowerCase().includes(query.toLowerCase()))) {
+                        setIsDropdownVisible(true);
+                    } else {
+                        filterAndSetSuggestions(query);
+                    }
+                }
+            };
+
+            const handleKeyDown = (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    const exactMatch = suggestions.find(
+                        (suggestion) => suggestion.name.toLowerCase() === query.toLowerCase()
+                    );
+                    if (exactMatch) {
+                        handleSuggestionClick(exactMatch);
+                    }
+                } else if (event.key === 'Escape') {
+                    setIsDropdownVisible(false);
+                }
+            };
+
+            return React.createElement('div', { className: 'search-container', ref: searchContainerRef },
+                React.createElement('input', {
+                    name: 'search-input',
+                    type: 'text',
+                    value: query,
+                    onChange: handleInputChange,
+                    onFocus: handleInputFocus,
+                    onKeyDown: handleKeyDown,
+                    placeholder: 'Search',
+                    autoComplete: 'off',
+                    className: 'search-input',
+                }),
+                isDropdownVisible && suggestions.length > 0 && React.createElement('ul', { className: 'search-suggestions' },
+                    suggestions.map((item) =>
+                        React.createElement('li', {
+                            key: item.id,
+                            onClick: () => handleSuggestionClick(item),
+                            className: 'search-suggestion'
+                        }, item.name)
+                    )
+                )
+            );
+        };
+
+        // PersonInfoPopup component
+        const PersonInfoPopup = ({ featureInfo, onClose }) => {
+            const [allPeopleData, setAllPeopleData] = useState(null);
+            const [allGroupsData, setAllGroupsData] = useState(null);
+            const [personToDisplay, setPersonToDisplay] = useState(null);
+            const [groupNamesToDisplay, setGroupNamesToDisplay] = useState('N/A');
+            const [isLoadingPeople, setIsLoadingPeople] = useState(false);
+            const [peopleError, setPeopleError] = useState(null);
+            const [isLoadingGroups, setIsLoadingGroups] = useState(false);
+            const [groupsError, setGroupsError] = useState(null);
+
+            useEffect(() => {
+                const fetchAllPeople = async () => {
+                    setIsLoadingPeople(true);
+                    setPeopleError(null);
+                    try {
+                        const response = await fetch(THEOGRAPHIC_PEOPLE_URL);
+                        if (!response.ok) {
+                            throw new Error(`Failed to fetch people data: ${response.statusText}`);
+                        }
+                        const data = await response.json();
+                        setAllPeopleData(data);
+                    } catch (err) {
+                        setPeopleError(err instanceof Error ? err.message : 'An unknown error occurred while fetching people');
+                    } finally {
+                        setIsLoadingPeople(false);
+                    }
+                };
+
+                if (!allPeopleData) {
+                    fetchAllPeople();
+                }
+            }, [allPeopleData]);
+
+            useEffect(() => {
+                const fetchAllGroups = async () => {
+                    setIsLoadingGroups(true);
+                    setGroupsError(null);
+                    try {
+                        const response = await fetch(THEOGRAPHIC_GROUPS_URL);
+                        if (!response.ok) {
+                            throw new Error(`Failed to fetch groups data: ${response.statusText}`);
+                        }
+                        const data = await response.json();
+                        setAllGroupsData(data);
+                    } catch (err) {
+                        setGroupsError(err instanceof Error ? err.message : 'An unknown error occurred while fetching groups');
+                    } finally {
+                        setIsLoadingGroups(false);
+                    }
+                };
+
+                if (!allGroupsData) {
+                    fetchAllGroups();
+                }
+            }, [allGroupsData]);
+
+            useEffect(() => {
+                if (featureInfo && allPeopleData) {
+                    const foundPerson = allPeopleData.find(
+                        (p) => p.fields.personID === featureInfo.personIdToLookup
+                    );
+                    setPersonToDisplay(foundPerson || null);
+                } else {
+                    setPersonToDisplay(null);
+                }
+            }, [featureInfo, allPeopleData]);
+
+            useEffect(() => {
+                if (personToDisplay && allGroupsData) {
+                    const memberOfRefs = personToDisplay.fields.memberOf;
+                    if (memberOfRefs && Array.isArray(memberOfRefs) && memberOfRefs.length > 0) {
+                        const names = memberOfRefs
+                            .map((refId) => {
+                                const group = allGroupsData.find((g) => g.id === refId);
+                                return group ? group.fields.groupName : null;
+                            })
+                            .filter((name) => name !== null);
+
+                        if (names.length > 0) {
+                            setGroupNamesToDisplay(names.join(', '));
+                        } else {
+                            setGroupNamesToDisplay('N/A');
+                        }
+                    } else {
+                        setGroupNamesToDisplay('N/A');
+                    }
+                } else if (personToDisplay && !allGroupsData && !isLoadingGroups && !groupsError) {
+                    setGroupNamesToDisplay('N/A');
+                }
+            }, [personToDisplay, allGroupsData, isLoadingGroups, groupsError]);
+
+            if (!featureInfo || !personToDisplay) {
+                if (isLoadingPeople && !allPeopleData) {
+                    return null;
+                }
+                return null;
+            }
+
+            // Create popup manually since we can't use mapbox-gl popup component directly
+            useEffect(() => {
+                if (globalMap && featureInfo && personToDisplay) {
+                    const popup = new mapboxgl.Popup({
+                        closeOnClick: false,
+                        anchor: 'bottom',
+                        maxWidth: '240px'
+                    })
+                    .setLngLat([featureInfo.longitude, featureInfo.latitude])
+                    .setHTML(`
+                        <div>
+                            <div class="popup-title">
+                                ${personToDisplay.fields.name || 'Unknown Name'}
+                            </div>
+                            <div class="popup-group">
+                                Group: ${isLoadingGroups ? 'Loading groups...' : 
+                                        groupsError ? '<span class="popup-error">Error loading groups</span>' : 
+                                        groupNamesToDisplay}
+                            </div>
+                            <div>
+                                <a href="https://theographic.netlify.app/person/${personToDisplay.fields.personLookup}" 
+                                   target="_blank" rel="noopener noreferrer" class="popup-link">
+                                    More Details
+                                </a>
+                            </div>
+                            ${isLoadingPeople && !allPeopleData ? '<div class="popup-loading">Loading person data...</div>' : ''}
+                            ${peopleError ? `<div class="popup-error">Error: ${peopleError}</div>` : ''}
+                        </div>
+                    `)
+                    .addTo(globalMap);
+
+                    return () => popup.remove();
+                }
+            }, [featureInfo, personToDisplay, groupNamesToDisplay, isLoadingGroups, groupsError, isLoadingPeople, peopleError]);
+
+            return null;
+        };
+
+        // Main application component
+        const AncestryApp = () => {
+            const [currentFilter, setCurrentFilter] = useState('all');
+            const [isMapInitialized, setIsMapInitialized] = useState(false);
+            const [isMapSettled, setIsMapSettled] = useState(false);
+            const [clickedFeatureForPopup, setClickedFeatureForPopup] = useState(null);
+            const [allSearchableItems, setAllSearchableItems] = useState([]);
+            const mapContainerRef = useRef(null);
+
+            const calculatePeopleMapWidth = () => (typeof window !== "undefined" ? window.innerWidth * 0.95 : 850);
+            const calculatePeopleMapHeight = () => (typeof window !== "undefined" ? window.innerHeight * 0.827 : 720);
+
+            // Initialize map
+            useEffect(() => {
+                if (true) {
+                    // Keep your existing mapbox-gl code as fallback
+                    if (!mapContainerRef.current) return;
+
+                    const initializeMap = () => {
+                        if (!mapContainerRef.current) return;
+                        
+                        mapboxgl.accessToken = MAPBOX_TOKEN;
+                        
+                        const map = new mapboxgl.Map({
+                            container: mapContainerRef.current,
+                            style: PEOPLE_MAP_STYLE,
+                            center: [0, 0],
+                            zoom: 3,
+                            bearing: 0,
+                            pitch: 0,
+                        });
+
+                        globalMap = map;
+
+                        map.on('style.load', () => {
+                            console.log('Map style loaded');
+                            setIsMapInitialized(true);
+                            initializeDynamicConstants(map);
+                            
+                            const padding = calculateMapPadding(map, 0.1);
+                            map.on('moveend', () => {
+                                setIsMapSettled(true);
+                            });
+                            map.fitBounds(INITIAL_MAP_BOUNDS, { padding: padding });
+                        });
+
+                        map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+
+                        map.on('click', (e) => {
+                            const features = map.queryRenderedFeatures(e.point, {
+                                layers: INTERACTIVE_LAYER_IDS
+                            });
+                            
+                            if (features.length > 0) {
+                                const feature = features[0];
+                                if (feature.properties && 'PersonID' in feature.properties) {
+                                    const personIdFromFeature = feature.properties.PersonID;
+                                    const personIdNum = typeof personIdFromFeature === 'string'
+                                        ? parseInt(personIdFromFeature, 10)
+                                        : personIdFromFeature;
+
+                                    if (!isNaN(personIdNum)) {
+                                        setClickedFeatureForPopup({
+                                            personIdToLookup: personIdNum,
+                                            longitude: e.lngLat.lng,
+                                            latitude: e.lngLat.lat,
+                                            groupLabel: feature.properties.groupLabel,
+                                        });
+                                    }
+                                } else {
+                                    setClickedFeatureForPopup(null);
+                                }
+                            } else {
+                                setClickedFeatureForPopup(null);
+                            }
+                        });
+
+                        map.on('mouseenter', INTERACTIVE_LAYER_IDS, () => {
+                            map.getCanvas().style.cursor = 'pointer';
+                        });
+
+                        map.on('mouseleave', INTERACTIVE_LAYER_IDS, () => {
+                            map.getCanvas().style.cursor = '';
+                        });
+
+                        return () => {
+                            map.remove();
+                            globalMap = null;
+                        };
+                    };
+
+                    const timer = setTimeout(initializeMap, 100);
+                    return () => clearTimeout(timer);
+                }
+            }, []);
+            
+            // Initialize search items
+            useEffect(() => {
+                if (!globalMap || allSearchableItems.length > 0) return;
+
+                const processFeatures = () => {
+                    if (!globalMap.isStyleLoaded()) {
+                        globalMap.once('styledata', processFeatures);
+                        return;
+                    }
+                    
+                    const uniqueItemsMap = new Map();
+                    const layerConfig = {
+                        layerId: 'father-points',
+                        nameProperty: 'nameLabel',
+                        sourceLayer: 'bible_genes_json_2',
+                    };
+
+                    try {
+                        const layer = globalMap.getLayer(layerConfig.layerId);
+                        if (!layer) return;
+
+                        const sourceId = layer.source;
+                        if (!sourceId) return;
+                        
+                        const features = globalMap.querySourceFeatures(sourceId, {
+                            sourceLayer: layerConfig.sourceLayer,
+                        });
+
+                        for (const feature of features) {
+                            const name = feature.properties?.[layerConfig.nameProperty];
+                            const coords = getCoordinates(feature.geometry);
+
+                            if (name && typeof name === 'string' && coords) {
+                                const itemUniqueKey = `${layerConfig.layerId}-${name}-${coords.join(',')}`;
+
+                                if (!uniqueItemsMap.has(itemUniqueKey)) {
+                                    const baseItem = {
+                                        id: itemUniqueKey,
+                                        name: name,
+                                        coordinates: coords,
+                                        layerId: layerConfig.layerId,
+                                        groupLabel: feature.properties?.groupLabel,
+                                        verseCount: feature.properties?.verseCount,
+                                    };
+
+                                    uniqueItemsMap.set(itemUniqueKey, baseItem);
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`Error processing layer ${layerConfig.layerId}:`, error);
+                    }
+                    
+                    setAllSearchableItems(Array.from(uniqueItemsMap.values()));
+                };
+                
+                if (globalMap.loaded()) {
+                    processFeatures();
+                } else {
+                    globalMap.once('load', processFeatures);
+                }
+            }, [isMapInitialized, allSearchableItems.length]);
+
+            const initializeDynamicConstants = (mapInstance) => {
+                if (globalConstantsInitialized) return;
+
+                // Initialize features cache
+                ["father-points", "father-lines"].forEach(layerId => {
+                    const layer = mapInstance.getLayer(layerId);
+                    if (!layer || !layer.source) return;
+                    
+                    const srcId = layer.source;
+                    const srcLayer = layer['source-layer'];
+                    try {
+                        const allFeatures = mapInstance.querySourceFeatures(srcId, { 
+                            sourceLayer: srcLayer 
+                        });
+                        featuresCache.set(layerId, allFeatures);
+                    } catch (e) {
+                        console.error(`Error querying source features for layer ${layerId}:`, e);
+                        featuresCache.set(layerId, []);
+                    }
+                });
+
+                // Fetch original label opacities
+                LABEL_LAYER_IDS.forEach(layerId => {
+                    if (mapInstance.getLayer(layerId)) {
+                        try {
+                            const opacityValue = mapInstance.getPaintProperty(layerId, 'text-opacity');
+                            dynamicOriginalLabelOpacities.set(layerId, opacityValue);
+                        } catch (e) {
+                            console.warn(`Could not get initial text-opacity for layer ${layerId}.`, e);
+                            dynamicOriginalLabelOpacities.set(layerId, undefined);
+                        }
+                    } else {
+                        console.warn(`Label layer ${layerId} not found in the current map style during initialization.`);
+                        dynamicOriginalLabelOpacities.set(layerId, undefined);
+                    }
+                });
+
+                // Calculate genealogy lines
+                const calculateGenealogyLines = () => {
+                    const points = judahJesusPoints;
+                    const lines = [];
+                    const seenLines = new Set();
+                    
+                    for (let i = 0; i < points.length; i++) {
+                        const currentPoint = points[i];
+                        const distances = points.map((p, idx) => ({ 
+                            distance: idx === i ? Infinity : turf.distance(turf.point(currentPoint), turf.point(p)), 
+                            index: idx 
+                        }));
+                        const sortedIndices = distances
+                            .sort((a, b) => a.distance - b.distance)
+                            .slice(0, 2)
+                            .map(item => item.index);
+
+                        for (const neighborIdx of sortedIndices) {
+                            const neighbor = points[neighborIdx];
+                            const lineKey = [i, neighborIdx].sort().join('-');
+                            if (!seenLines.has(lineKey)) {
+                                seenLines.add(lineKey);
+                                lines.push({
+                                    type: 'Feature',
+                                    geometry: {
+                                        type: 'LineString',
+                                        coordinates: [currentPoint, neighbor]
+                                    },
+                                    properties: {
+                                        groupLabel: 'Tribe of Judah,Genealogy of Jesus'
+                                    }
+                                });
+                            }
+                        }
+                    }
+
+                    // Add include lines
+                    Object.values(includeLines).forEach(lineCoords => {
+                        const [start, end] = lineCoords;
+                        lines.push({
+                            type: 'Feature',
+                            geometry: {
+                                type: 'LineString',
+                                coordinates: [start, end]
+                            },
+                            properties: {
+                                groupLabel: 'Tribe of Judah,Genealogy of Jesus'
+                            }
+                        });
+                    });
+
+                    // Filter out exclude lines
+                    const excludeCoordsSet = new Set(
+                        Object.values(excludeLines).map(lineCoords => {
+                            const [start, end] = lineCoords;
+                            return [JSON.stringify([start, end])];
+                        }).flat()
+                    );
+
+                    const filteredLines = lines.filter(line => {
+                        const coords = line.geometry.coordinates;
+                        const coordsStr1 = JSON.stringify(coords);
+                        const coordsStr2 = JSON.stringify([coords[1], coords[0]]);
+                        return !excludeCoordsSet.has(coordsStr1) && !excludeCoordsSet.has(coordsStr2);
+                    });
+
+                    return filteredLines;
+                };
+
+                const genealogyLines = calculateGenealogyLines();
+                genealogyLinesCache.set('judah-jesus-genealogy', genealogyLines);
+
+                // Add genealogy lines to map
+                if (genealogyLines.length > 0) {
+                    try {
+                        mapInstance.addSource('genealogy-lines-source', {
+                            type: 'geojson',
+                            data: {
+                                type: 'FeatureCollection',
+                                features: genealogyLines
+                            }
+                        });
+                        mapInstance.addLayer({
+                            id: 'genealogy-lines',
+                            type: 'line',
+                            source: 'genealogy-lines-source',
+                            layout: {
+                                'line-join': 'round',
+                                'line-cap': 'round',
+                                'visibility': 'none'
+                            },
+                            paint: {
+                                'line-color': '#d62728',
+                                'line-width': 2,
+                                'line-opacity': 1
+                            }
+                        }, 'father-points');
+                    } catch (e) {
+                        console.error('Error adding genealogy lines to map:', e);
+                    }
+                }
+                globalConstantsInitialized = true;
+            };
+
+            const fitMapToGroup = (mapInstance, groupId) => {
+                if (groupId === "all") {
+                    flyToMapBounds(mapInstance, 0.1, INITIAL_MAP_BOUNDS, 16);
+                    return;
+                }
+
+                let minLng = +Infinity, maxLng = -Infinity,
+                    minLat = +Infinity, maxLat = -Infinity,
+                    featuresFound = false;
+
+                const process = ([lng, lat]) => {
+                    minLng = Math.min(minLng, lng);
+                    maxLng = Math.max(maxLng, lng);
+                    minLat = Math.min(minLat, lat);
+                    maxLat = Math.max(maxLat, lat);
+                    featuresFound = true;
+                };
+
+                ["father-points", "father-lines"].forEach(layerId => {
+                    const cachedFeatures = featuresCache.get(layerId) || [];
+                    const groupFeatures = cachedFeatures.filter(feature => {
+                        const props = feature.properties;
+                        if (!props || !props[GROUP_PROPERTY_NAME]) return false;
+                        const groupLabelString = props[GROUP_PROPERTY_NAME];
+
+                        if (layerId === "father-points") {
+                            return props.verseCount !== undefined && groupLabelString.includes(groupId);
+                        } else {
+                            return groupLabelString.includes(groupId);
+                        }
+                    });
+
+                    groupFeatures.forEach(f => {
+                        const geom = f.geometry;
+                        if (geom.type === "Point") {
+                            process(geom.coordinates);
+                        } else if (geom.type === "LineString") {
+                            geom.coordinates.forEach(process);
+                        }
+                    });
+                });
+
+                if (!featuresFound) {
+                    console.warn(`No features found for group ${groupId}. Flying to initial map bounds.`);
+                    flyToMapBounds(mapInstance, 0.1, INITIAL_MAP_BOUNDS, 16);
+                    return;
+                }
+
+                const bounds = [[minLng, minLat], [maxLng, maxLat]];
+                flyToMapBounds(mapInstance, 0.1, bounds, 16);
+            };
+
+            const applyFilter = (mapInstance, groupId) => {
+                const SHOW_OPACITY = 1;
+                const HIDE_OPACITY = 0.2;
+
+                if (mapInstance.getLayer('genealogy-lines')) {
+                    mapInstance.setLayoutProperty('genealogy-lines', 'visibility', groupId === 'Tribe of Judah' ? 'visible' : 'none');
+                }
+
+                PEOPLE_LAYER_IDS.forEach((layerId) => {
+                    if (mapInstance.getLayer(layerId)) {
+                        if (layerId === "father-points") {
+                            const correctPointsFilter = ["has", "verseCount"];
+                            mapInstance.setFilter(layerId, correctPointsFilter);
+
+                            if (groupId === "all") {
+                                mapInstance.setPaintProperty(layerId, "circle-opacity", undefined); 
+                            } else {
+                                const opacityExpression = [ "case", ["in", groupId, ["get", GROUP_PROPERTY_NAME]], SHOW_OPACITY, HIDE_OPACITY ];
+                                mapInstance.setPaintProperty(layerId, "circle-opacity", opacityExpression);
+                            }
+                        } else if (layerId === "father-lines") {
+                            mapInstance.setFilter(layerId, null);
+                            if (groupId === "all") {
+                                mapInstance.setPaintProperty(layerId, "line-opacity", undefined); 
+                            } else {
+                                const opacityExpression = [ "case", ["in", groupId, ["get", GROUP_PROPERTY_NAME]], SHOW_OPACITY, HIDE_OPACITY ];
+                                mapInstance.setPaintProperty(layerId, "line-opacity", opacityExpression);
+                            }
+                        } else if (LABEL_LAYER_IDS.includes(layerId)) {
+                            const originalStyleOpacity = dynamicOriginalLabelOpacities.get(layerId);
+                            if (groupId === "all") {
+                                mapInstance.setPaintProperty(layerId, "text-opacity", originalStyleOpacity !== undefined ? originalStyleOpacity : undefined);
+                            } else {
+                                const condition = ["in", groupId, ["get", GROUP_PROPERTY_NAME]];
+                                let finalOpacityExpression;
+                                if (originalStyleOpacity !== undefined) {
+                                    if (typeof originalStyleOpacity === 'number') {
+                                        finalOpacityExpression = ["case", condition, originalStyleOpacity, HIDE_OPACITY];
+                                    } else if (
+                                        Array.isArray(originalStyleOpacity) &&
+                                        originalStyleOpacity[0] === "interpolate" &&
+                                        originalStyleOpacity.length >= 5 &&
+                                        Array.isArray(originalStyleOpacity[2]) &&
+                                        originalStyleOpacity[2][0] === "zoom"
+                                    ) {
+                                        const newInterpolateExpr = [
+                                            originalStyleOpacity[0], 
+                                            originalStyleOpacity[1], 
+                                            originalStyleOpacity[2]
+                                        ];
+                                        for (let i = 3; i < originalStyleOpacity.length; i += 2) {
+                                            if (i + 1 < originalStyleOpacity.length) {
+                                                const stopInput = originalStyleOpacity[i];
+                                                const stopOutputOriginal = originalStyleOpacity[i + 1];
+                                                newInterpolateExpr.push(stopInput);
+                                                newInterpolateExpr.push(["case", condition, stopOutputOriginal, HIDE_OPACITY]);
+                                            }
+                                        }
+                                        finalOpacityExpression = newInterpolateExpr;
+                                    } else if (Array.isArray(originalStyleOpacity)) {
+                                        finalOpacityExpression = ["case", condition, originalStyleOpacity, HIDE_OPACITY];
+                                    } else {
+                                        console.warn(`Layer ${layerId} has an unexpected originalStyleOpacity type. Falling back to simple opacity for filtered view.`);
+                                        finalOpacityExpression = ["case", condition, SHOW_OPACITY, HIDE_OPACITY];
+                                    }
+                                } else {
+                                    finalOpacityExpression = ["case", condition, SHOW_OPACITY, HIDE_OPACITY];
+                                }
+                                mapInstance.setPaintProperty(layerId, "text-opacity", finalOpacityExpression);
+                            }
+                        }
+                    }
+                });
+
+                fitMapToGroup(mapInstance, groupId);
+            };
+
+            const handleFilterChange = (event) => {
+                const newGroupId = event.target.value;
+                setCurrentFilter(newGroupId);
+
+                if (!globalMap) return;
+
+                if (globalConstantsInitialized) {
+                    applyFilter(globalMap, newGroupId);
+                } else {
+                    console.warn("handleChange called before global constants were initialized. Attempting to apply filter anyway.");
+                    applyFilter(globalMap, newGroupId);
+                }
+            };
+
+            const checkIfItemVisibleInCurrentFilter = (item, filter) => {
+                if (filter === 'all') return true;
+                
+                const itemGroupLabel = item.groupLabel;
+                if (itemGroupLabel && typeof itemGroupLabel === 'string') {
+                    return itemGroupLabel.includes(filter);
+                }
+                return false;
+            };
+
+            const switchToAllFilter = () => {
+                const allRadio = document.querySelector('input[name="people-legend"][value="all"]');
+                if (allRadio && !allRadio.checked) {
+                    allRadio.click();
+                    setCurrentFilter('all');
+                }
+            };
+
+            const handleBeforeSearch = useCallback((item) => {
+                if (!checkIfItemVisibleInCurrentFilter(item, currentFilter)) {
+                    switchToAllFilter();
+                }
+            }, [currentFilter]);
+
+            return React.createElement('div', { className: 'page-container' },
+                React.createElement('div', { className: 'content-wrapper' },
+                    React.createElement('header', { className: 'header' },
+                        React.createElement('h1', null, React.createElement('i', null, "God's Bloodline")),
+                        React.createElement('div', { className: 'header-controls' },
+                            React.createElement('div', { className: 'order-1' },
+                                React.createElement('form', null,
+                                    React.createElement('ul', { id: 'people-legend' },
+                                        filterOptions.map(option =>
+                                            React.createElement('li', { key: option.id },
+                                                React.createElement('input', {
+                                                    id: `people-legend-${option.id.toLowerCase().replace(/\s+/g, '-')}`,
+                                                    type: 'radio',
+                                                    name: 'people-legend',
+                                                    value: option.id,
+                                                    defaultChecked: option.defaultChecked,
+                                                    onChange: handleFilterChange,
+                                                    disabled: !isMapInitialized
+                                                }),
+                                                React.createElement('label', {
+                                                    htmlFor: `people-legend-${option.id.toLowerCase().replace(/\s+/g, '-')}`
+                                                }, option.text)
+                                            )
+                                        )
+                                    )
+                                )
+                            ),
+                            React.createElement('div', { className: 'order-2' },
+                                React.createElement(SearchBar, {
+                                    allSearchableItems: allSearchableItems,
+                                    onBeforeSelect: handleBeforeSearch
+                                })
+                            )
+                        )
+                    ),
+                    !isMapSettled && React.createElement('div', { className: 'loading-message' }, 'Loading map...'),
+                    React.createElement('div', { 
+                        className: 'ancestry-container',
+                        style: { visibility: isMapSettled ? 'visible' : 'hidden' }
+                    },
+                        React.createElement('div', {
+                            ref: mapContainerRef,
+                            className: 'map-container'
+                        })
+                    ),
+                    clickedFeatureForPopup && React.createElement(PersonInfoPopup, {
+                        featureInfo: clickedFeatureForPopup,
+                        onClose: () => setClickedFeatureForPopup(null)
+                    })
+                )
+            );
+        };
+
+        // Render the application
+        ReactDOM.render(React.createElement(AncestryApp), document.getElementById('root'));
+    </script>
+</body>
+</html>
+

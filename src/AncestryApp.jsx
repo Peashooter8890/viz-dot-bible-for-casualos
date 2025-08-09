@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+// Import the shared features cache (stop building it here)
+import { featuresCache } from './features';
 import './ancestry-styles.css';
 
 // Access CDN libraries as globals
 const { distance, point } = window.turf;
 const mapboxgl = window.mapboxgl;
+
 
 // Constants
 const MAPBOX_TOKEN = "pk.eyJ1IjoiYmlibGV2aXoiLCJhIjoiY2pjOTVhazJ1MDlqbzMzczFoamd3MzFnOSJ9.7k1RJ5oh-LNaYuADxsgx4Q";
@@ -318,7 +321,6 @@ const peopleSearchSort = createSearchSort([
 ], false);
 
 // Cache objects
-const featuresCache = new Map();
 const genealogyLinesCache = new Map();
 const dynamicOriginalLabelOpacities = new Map();
 let globalConstantsInitialized = false;
@@ -668,7 +670,7 @@ const SearchBar = ({ mapInstance, placeholder = "Search", flyToZoom = 6, onBefor
   );
 };
 
-// Main AncestryApp Component
+// Main AncestryApp Component 
 const AncestryApp = () => {
   const [clickedFeatureForPopup, setClickedFeatureForPopup] = useState(null);
   const [currentFilter, setCurrentFilter] = useState('all');
@@ -676,25 +678,27 @@ const AncestryApp = () => {
   const [isMapSettled, setIsMapSettled] = useState(false);
   const [mapInstance, setMapInstance] = useState(null);
   const mapContainerRef = useRef(null);
+  const mapInitializationRef = useRef(false);
   const SHOW_OPACITY = 1;
   const HIDE_OPACITY = 0.2;
 
   // Initialize Mapbox map
     useEffect(() => {
-    if (!mapContainerRef.current || mapInstance) return;
+    if (!mapContainerRef.current || mapInstance || mapInitializationRef.current) return;
 
     mapboxgl.accessToken = MAPBOX_TOKEN;
+    let currentMap = null; // Track the current map instance
     
     const fetchAndFixStyle = async () => {
-        try {
+      try {
         console.log('🔄 Fetching style from Mapbox API...');
         
         const response = await fetch(
-            `https://api.mapbox.com/styles/v1/bibleviz/cm6yc8h0i001w01quf2orebmn?access_token=${MAPBOX_TOKEN}`
+          `https://api.mapbox.com/styles/v1/bibleviz/cm6yc8h0i001w01quf2orebmn?access_token=${MAPBOX_TOKEN}`
         );
         
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
         const originalStyle = await response.json();
@@ -704,55 +708,54 @@ const AncestryApp = () => {
         const fixedStyle = fixStyleJSON(originalStyle);
         
         console.log('🗺️ Creating map with fixed style...');
-        return await createMapWithStyle(fixedStyle);
+        await createMapWithStyle(fixedStyle);
         
-        } catch (error) {
-            console.error(`❌ Error: ${error.message}`);
-        }
+      } catch (error) {
+        console.error(`❌ Error: ${error.message}`);
+      }
     };
 
     const createMapWithStyle = async (styleJSON) => {
-        try {
+      try {
         const map = new mapboxgl.Map({
-            container: mapContainerRef.current,
-            style: styleJSON, // Use the fixed style object directly
-            center: styleJSON.center || [0, 0],
-            zoom: styleJSON.zoom || 3,
-            bearing: styleJSON.bearing || 0,
-            pitch: styleJSON.pitch || 0
+          container: mapContainerRef.current,
+          style: styleJSON,
+          center: styleJSON.center || [0, 0],
+          zoom: styleJSON.zoom || 3,
+          bearing: styleJSON.bearing || 0,
+          pitch: styleJSON.pitch || 0
         });
+        
+        currentMap = map; // Store reference for cleanup
         
         // Add navigation control
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
         
         map.on('load', () => {
-            console.log('Map loaded successfully with fixed style');
-            setIsMapInitialized(true);
-            setMapInstance(map);
-            
-            initializeDynamicConstants(map);
-            
-            const padding = calculateMapPadding(map, 0.1);
-            map.on('moveend', () => {
+          console.log('Map loaded successfully with fixed style');
+          setIsMapInitialized(true);
+          setMapInstance(map);
+          
+          initializeDynamicConstants(map);
+          
+          const padding = calculateMapPadding(map, 0.1);
+          map.on('moveend', () => {
             setIsMapSettled(true);
-            });
-            
-            map.fitBounds(INITIAL_MAP_BOUNDS, { padding: padding });
+          });
+          
+          map.fitBounds(INITIAL_MAP_BOUNDS, { padding: padding });
         });
         
         map.on('error', (e) => {
-            console.warn(`⚠️ Map warning: ${e.error?.message || 'Unknown error'}`);
-            // Don't treat warnings as fatal errors
+          console.warn(`⚠️ Map warning: ${e.error?.message || 'Unknown error'}`);
         });
         
         setupMapInteractions(map);
         
-        return map;
-        
-        } catch (error) {
+      } catch (error) {
         console.error(`❌ Failed to create map: ${error.message}`);
         throw error;
-        }
+      }
     };
 
     const setupMapInteractions = (map) => {
@@ -801,38 +804,24 @@ const AncestryApp = () => {
     };
 
     // Start the initialization
-    fetchAndFixStyle().then((map) => {
-        // Cleanup function will handle map removal
-        return () => {
-        if (map) map.remove();
-        };
-    });
+    fetchAndFixStyle();
 
-    }, []);
+    // Cleanup function
+    return () => {
+    if (currentMap) {
+      currentMap.remove();
+      currentMap = null;
+    }
+  };
+}, []);
 
   const initializeDynamicConstants = (mapInstance) => {
     if (globalConstantsInitialized) {
       return;
     }
 
-    // Initialize features cache
-    ["father-points", "father-lines"].forEach(layerId => {
-      const layer = mapInstance.getLayer(layerId);
-      if (!layer || !layer.source) {
-        return;
-      }
-      const srcId = layer.source;
-      const srcLayer = layer["source-layer"];
-      try {
-        const allFeatures = mapInstance.querySourceFeatures(srcId, { 
-          sourceLayer: srcLayer 
-        });
-        featuresCache.set(layerId, allFeatures);
-      } catch (e) {
-        console.error(`Error querying source features for layer ${layerId}:`, e);
-        featuresCache.set(layerId, []);
-      }
-    });
+    // Removed: dynamic querying to build featuresCache locally.
+    // We now rely solely on the imported featuresCache from features.js.
 
     // Fetch original label opacities
     LABEL_LAYER_IDS.forEach(layerId => {
@@ -974,6 +963,7 @@ const AncestryApp = () => {
 
     ["father-points", "father-lines"].forEach(layerId => {
       const cachedFeatures = featuresCache.get(layerId) || [];
+      
       const groupFeatures = cachedFeatures.filter(feature => {
         const props = feature.properties;
         if (!props || !props[GROUP_PROPERTY_NAME]) return false;
