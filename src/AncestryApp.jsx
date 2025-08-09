@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 // Import the shared features cache (stop building it here)
 import { featuresCache } from './features';
+import peopleData from './data/people.json';
+import groupsData from './data/peopleGroups.json';
 import './ancestry-styles.css';
 
 // Access CDN libraries as globals
@@ -10,14 +12,11 @@ const mapboxgl = window.mapboxgl;
 
 // Constants
 const MAPBOX_TOKEN = "pk.eyJ1IjoiYmlibGV2aXoiLCJhIjoiY2pjOTVhazJ1MDlqbzMzczFoamd3MzFnOSJ9.7k1RJ5oh-LNaYuADxsgx4Q";
-const PEOPLE_MAP_STYLE = "mapbox://styles/bibleviz/cm6yc8h0i001w01quf2orebmn";
 const LABEL_LAYER_IDS = ["labels-top-level", "labels-mid-level", "labels-bottom-level"];
 const PEOPLE_LAYER_IDS = ["father-points", "father-lines", ...LABEL_LAYER_IDS];
 const INTERACTIVE_LAYER_IDS = ['father-points', 'genealogy-lines', ...LABEL_LAYER_IDS];
 const GROUP_PROPERTY_NAME = "groupLabel";
 const INITIAL_MAP_BOUNDS = [[-23.642578125, -24.00632619875111], [23.917236328125, 23.372513822359466]];
-const THEOGRAPHIC_PEOPLE_URL = 'https://raw.githubusercontent.com/robertrouse/theographic-bible-metadata/master/json/people.json';
-const THEOGRAPHIC_GROUPS_URL = 'https://raw.githubusercontent.com/robertrouse/theographic-bible-metadata/master/json/peopleGroups.json';
 
 // Filter options data
 const filterOptions = [
@@ -286,50 +285,29 @@ const PersonInfoPopup = ({ featureInfo, onClose, mapInstance }) => {
   }, [featureInfo, mapInstance, onClose]);
 
   useEffect(() => {
-    const fetchAllPeople = async () => {
-      setIsLoadingPeople(true);
-      setPeopleError(null);
-      try {
-        const response = await fetch(THEOGRAPHIC_PEOPLE_URL);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch people data: ${response.statusText}`);
-        }
-        const data = await response.json();
-        setAllPeopleData(data);
-      } catch (err) {
-        setPeopleError(err instanceof Error ? err.message : 'An unknown error occurred while fetching people');
-      } finally {
-        setIsLoadingPeople(false);
-      }
-    };
-
-    if (!allPeopleData) {
-      fetchAllPeople();
+    setIsLoadingPeople(true);
+    setPeopleError(null);
+    try {
+      setAllPeopleData(peopleData);
+      setIsLoadingPeople(false);
+    } catch (err) {
+      setPeopleError('Failed to load people data');
+      setIsLoadingPeople(false);
     }
-  }, [allPeopleData]);
+  }, []);
 
+  // Replace the existing useEffect for fetching groups data
   useEffect(() => {
-    const fetchAllGroups = async () => {
-      setIsLoadingGroups(true);
-      setGroupsError(null);
-      try {
-        const response = await fetch(THEOGRAPHIC_GROUPS_URL);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch groups data: ${response.statusText}`);
-        }
-        const data = await response.json();
-        setAllGroupsData(data);
-      } catch (err) {
-        setGroupsError(err instanceof Error ? err.message : 'An unknown error occurred while fetching groups');
-      } finally {
-        setIsLoadingGroups(false);
-      }
-    };
-
-    if (!allGroupsData) {
-      fetchAllGroups();
+    setIsLoadingGroups(true);
+    setGroupsError(null);
+    try {
+      setAllGroupsData(groupsData);
+      setIsLoadingGroups(false);
+    } catch (err) {
+      setGroupsError('Failed to load groups data');
+      setIsLoadingGroups(false);
     }
-  }, [allGroupsData]);
+  }, []);
 
   useEffect(() => {
     if (featureInfo && allPeopleData) {
@@ -426,29 +404,57 @@ const SearchBar = ({ mapInstance, placeholder = "Search", flyToZoom = 6, onBefor
   }];
 
   useEffect(() => {
-    if (!mapInstance || allSearchableItems.length > 0) {
+    console.log("🔍 SearchBar useEffect running...");
+    console.log("📊 allSearchableItems.length:", allSearchableItems.length);
+    
+    if (allSearchableItems.length > 0) {
+      console.log("❌ allSearchableItems already has items - returning early");
       return;
     }
+    
+    console.log("✅ Processing features from static featuresCache...");
 
     const processFeatures = () => {
-      if (!mapInstance.isStyleLoaded()) {
-        mapInstance.once('styledata', processFeatures);
-        return;
-      }
+      console.log("🔍 Starting feature processing from static cache...");
       
       const uniqueItemsMap = new Map();
 
-      for (const config of layersConfigs) {
-        try {
-          const layer = mapInstance.getLayer(config.layerId);
-          if (!layer) continue;
+      // Helper function to get cached features (similar to the one in main component)
+      const getCachedFeatures = (layerId) => {
+        const cache = featuresCache;
+        if (!cache) return [];
 
-          const sourceId = layer.source;
-          if (!sourceId) continue;
+        // If it's a Map
+        if (typeof cache.get === 'function') {
+          return cache.get(layerId) || [];
+        }
+
+        // If it's an object with a "featuresCache" property
+        if (cache.featuresCache) {
+          const fromNested = cache.featuresCache[layerId];
+          if (Array.isArray(fromNested)) return fromNested;
+          if (fromNested && Array.isArray(fromNested.features)) return fromNested.features;
+        }
+
+        // Direct properties or FeatureCollection
+        if (Array.isArray(cache[layerId])) return cache[layerId];
+        if (cache[layerId] && Array.isArray(cache[layerId].features)) return cache[layerId].features;
+
+        return [];
+      };
+      
+      for (const config of layersConfigs) {
+        console.log(`🔍 Processing layer config:`, config);
+        
+        try {
+          const features = getCachedFeatures(config.layerId);
+          console.log(`📊 Found ${features.length} features for layer ${config.layerId}`);
           
-          const features = mapInstance.querySourceFeatures(sourceId, {
-            sourceLayer: config.sourceLayer,
-          });
+          // Debug: Check first few features
+          if (features.length > 0) {
+            console.log("📝 Sample feature properties:", features[0].properties);
+            console.log("🗂️ All property keys:", Object.keys(features[0].properties || {}));
+          }
 
           for (const feature of features) {
             const name = feature.properties?.[config.nameProperty];
@@ -475,18 +481,20 @@ const SearchBar = ({ mapInstance, placeholder = "Search", flyToZoom = 6, onBefor
             }
           }
         } catch (error) {
-          console.error(`Error processing layer ${config.layerId}:`, error);
+          console.error(`❌ Error processing layer ${config.layerId}:`, error);
         }
       }
-      setAllSearchableItems(Array.from(uniqueItemsMap.values()));
+      
+      const finalItems = Array.from(uniqueItemsMap.values());
+      console.log(`✅ Final searchable items: ${finalItems.length}`);
+      console.log("📋 Sample items:", finalItems.slice(0, 3));
+      
+      setAllSearchableItems(finalItems);
     };
     
-    if (mapInstance.loaded()) {
-      processFeatures();
-    } else {
-      mapInstance.once('load', processFeatures);
-    }
-  }, [mapInstance, allSearchableItems.length]);
+    // Process features immediately since we're using static data
+    processFeatures();
+  }, [allSearchableItems.length]); // Removed mapInstance dependency since we're not using it
 
   useEffect(() => {
     const handleClickOutside = (event) => {
